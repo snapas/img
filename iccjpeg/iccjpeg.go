@@ -1,4 +1,5 @@
 // Copyright 2014, Vimeo, LLC. All rights reserved.
+// Copyright 2021 A Bunch Tell LLC. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found here: https://github.com/vimeo/go-iccjpeg/blob/master/LICENSE
 
@@ -7,6 +8,7 @@ package iccjpeg
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"io"
 	"io/ioutil"
@@ -24,25 +26,26 @@ const (
 	iccHeaderLen = 14
 )
 
-func getSize(input io.Reader) (int, error) {
+// getSize returns the segment length, the bytes representing the segment length, and any error.
+func getSize(input io.Reader) (int, []byte, error) {
 	var buf [2]byte
 	_, err := io.ReadFull(input, buf[0:2])
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 
 	ret := int(buf[0])<<8 + int(buf[1]) - 2
 	if ret < 0 {
-		return ret, errors.New("Invalid segment length")
+		return ret, nil, errors.New("invalid segment length")
 	}
 
-	return ret, nil
+	return ret, buf[:], nil
 }
 
-// GetICCBuf reads a JPEG from input and returns a buffer containing the ICC profile.
+// GetICCRaw reads a JPEG from input and returns a buffer containing the raw ICC profile data.
 // If no ICC profile is present, then the buffer may be of length 0.
-func GetICCBuf(input io.Reader) ([]byte, error) {
-	var buf [2048]byte
+func GetICCRaw(input io.Reader) ([]byte, error) {
+	var buf [1024]byte
 	var err error
 	in := bufio.NewReader(input)
 
@@ -99,7 +102,7 @@ func GetICCBuf(input io.Reader) ([]byte, error) {
 				continue
 			}
 
-			size, err := getSize(in)
+			size, _, err := getSize(in)
 			if err != nil {
 				return nil, err
 			}
@@ -112,14 +115,17 @@ func GetICCBuf(input io.Reader) ([]byte, error) {
 		}
 	}
 
-	size, err := getSize(in)
+	size, sizeBytes, err := getSize(in)
 	if err != nil {
 		return nil, err
 	} else if size < iccHeaderLen {
 		return nil, errors.New("ICC segment invalid")
 	}
 
-	_, err = io.ReadFull(in, buf[0:12])
+	out := new(bytes.Buffer)
+	out.Write(sizeBytes)
+
+	_, err = io.ReadFull(io.TeeReader(in, out), buf[0:12])
 	if err != nil {
 		return nil, err
 	}
@@ -134,6 +140,7 @@ func GetICCBuf(input io.Reader) ([]byte, error) {
 	} else if seqN == 0 {
 		return nil, errors.New("invalid sequence number")
 	}
+	out.Write([]byte{seqN})
 
 	num, err := in.ReadByte()
 	if err != nil {
@@ -144,6 +151,7 @@ func GetICCBuf(input io.Reader) ([]byte, error) {
 	} else if int(num) != numMarkers {
 		return nil, errors.New("invalid ICC segment (numMarkers != cur_num_markers)")
 	}
+	out.Write([]byte{num})
 
 	if int(seqN) > numMarkers {
 		return nil, errors.New("invalid ICC segment (seqN > numMarkers)")
@@ -163,7 +171,8 @@ func GetICCBuf(input io.Reader) ([]byte, error) {
 		for _, data := range iccData {
 			ret = append(ret, data...)
 		}
-		return ret, nil
+		out.Write(ret)
+		return out.Bytes(), nil
 	}
 
 	return nil, nil
