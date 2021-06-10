@@ -1,5 +1,7 @@
 # img
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/snapas.svg)](https://pkg.go.dev/github.com/snapas)
+
 Drop-in functionality for decoding and encoding images, with some sugar added, including:
 
 * Metadata preservation
