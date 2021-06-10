@@ -87,11 +87,13 @@ func GetICCBuf(input io.Reader) ([]byte, error) {
 
 		// We reached the end of the image
 		if buf[1] == eoiMarker {
-			break
+			return nil, nil
 		}
 
 		// Are we at an APP2 marker?
-		if buf[1] != app2Marker {
+		if buf[1] == app2Marker {
+			break
+		} else {
 			// Skip RST if need be
 			if buf[1] >= rst0Marker && buf[1] <= rst7Marker {
 				continue
@@ -107,62 +109,61 @@ func GetICCBuf(input io.Reader) ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			continue
 		}
+	}
 
-		size, err := getSize(in)
-		if err != nil {
-			return nil, err
-		} else if size < iccHeaderLen {
-			return nil, errors.New("ICC segment invalid")
+	size, err := getSize(in)
+	if err != nil {
+		return nil, err
+	} else if size < iccHeaderLen {
+		return nil, errors.New("ICC segment invalid")
+	}
+
+	_, err = io.ReadFull(in, buf[0:12])
+	if err != nil {
+		return nil, err
+	}
+
+	if string(buf[0:11]) != "ICC_PROFILE" || buf[11] != 0 {
+		return nil, errors.New("ICC segment invalid")
+	}
+
+	seqN, err := in.ReadByte()
+	if err != nil {
+		return nil, err
+	} else if seqN == 0 {
+		return nil, errors.New("invalid sequence number")
+	}
+
+	num, err := in.ReadByte()
+	if err != nil {
+		return nil, err
+	} else if numMarkers == -1 {
+		numMarkers = int(num)
+		iccData = make([][]byte, numMarkers)
+	} else if int(num) != numMarkers {
+		return nil, errors.New("invalid ICC segment (numMarkers != cur_num_markers)")
+	}
+
+	if int(seqN) > numMarkers {
+		return nil, errors.New("invalid ICC segment (seqN > numMarkers)")
+	}
+
+	iccData[seqN-1] = make([]byte, size-iccHeaderLen)
+	_, err = io.ReadFull(in, iccData[seqN-1])
+	if err != nil {
+		return nil, err
+	}
+
+	iccLength += size - iccHeaderLen
+	readProfs++
+
+	if readProfs == numMarkers {
+		ret := make([]byte, 0, iccLength)
+		for _, data := range iccData {
+			ret = append(ret, data...)
 		}
-
-		_, err = io.ReadFull(in, buf[0:12])
-		if err != nil {
-			return nil, err
-		}
-
-		if string(buf[0:11]) != "ICC_PROFILE" || buf[11] != 0 {
-			return nil, errors.New("ICC segment invalid")
-		}
-
-		seqN, err := in.ReadByte()
-		if err != nil {
-			return nil, err
-		} else if seqN == 0 {
-			return nil, errors.New("invalid sequence number")
-		}
-
-		num, err := in.ReadByte()
-		if err != nil {
-			return nil, err
-		} else if numMarkers == -1 {
-			numMarkers = int(num)
-			iccData = make([][]byte, numMarkers)
-		} else if int(num) != numMarkers {
-			return nil, errors.New("invalid ICC segment (numMarkers != cur_num_markers)")
-		}
-
-		if int(seqN) > numMarkers {
-			return nil, errors.New("invalid ICC segment (seqN > numMarkers)")
-		}
-
-		iccData[seqN-1] = make([]byte, size-iccHeaderLen)
-		_, err = io.ReadFull(in, iccData[seqN-1])
-		if err != nil {
-			return nil, err
-		}
-
-		iccLength += size - iccHeaderLen
-		readProfs++
-
-		if readProfs == numMarkers {
-			ret := make([]byte, 0, iccLength)
-			for _, data := range iccData {
-				ret = append(ret, data...)
-			}
-			return ret, nil
-		}
+		return ret, nil
 	}
 
 	return nil, nil
