@@ -26,20 +26,20 @@ const (
 	iccHeaderLen = 14
 )
 
-// getSize returns the segment length, the bytes representing the segment length, and any error.
-func getSize(input io.Reader) (int, []byte, error) {
+// getSize returns the segment length and any error.
+func getSize(input io.Reader) (int, error) {
 	var buf [2]byte
 	_, err := io.ReadFull(input, buf[0:2])
 	if err != nil {
-		return 0, nil, err
+		return 0, err
 	}
 
 	ret := int(buf[0])<<8 + int(buf[1]) - 2
 	if ret < 0 {
-		return ret, nil, errors.New("invalid segment length")
+		return ret, errors.New("invalid segment length")
 	}
 
-	return ret, buf[:], nil
+	return ret, nil
 }
 
 // GetICCRaw reads a JPEG from input and returns a buffer containing the raw ICC profile data.
@@ -102,7 +102,7 @@ func GetICCRaw(input io.Reader) ([]byte, error) {
 				continue
 			}
 
-			size, _, err := getSize(in)
+			size, err := getSize(in)
 			if err != nil {
 				return nil, err
 			}
@@ -115,7 +115,7 @@ func GetICCRaw(input io.Reader) ([]byte, error) {
 		}
 	}
 
-	size, sizeBytes, err := getSize(in)
+	size, err := getSize(in)
 	if err != nil {
 		return nil, err
 	} else if size < iccHeaderLen {
@@ -123,7 +123,6 @@ func GetICCRaw(input io.Reader) ([]byte, error) {
 	}
 
 	out := new(bytes.Buffer)
-	out.Write(sizeBytes)
 
 	_, err = io.ReadFull(io.TeeReader(in, out), buf[0:12])
 	if err != nil {
