@@ -7,7 +7,7 @@ import (
 )
 
 func TestGetICCRaw(t *testing.T) {
-	f, err := os.Open("../testdata/example.jpg")
+	f, err := os.Open("../testdata/porto-1.jpg")
 	if err != nil {
 		log.Fatal(err)
 	}
