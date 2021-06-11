@@ -2,5 +2,5 @@ github.com/disintegration/gift v1.1.2 h1:9ZyHJr+kPamiH10FX3Pynt1AxFUob812bU9Wt4G
 github.com/disintegration/gift v1.1.2/go.mod h1:Jh2i7f7Q2BM7Ezno3PhfezbR1xpUg9dUg3/RlKGr4HI=
 github.com/disintegration/imageorient v0.0.0-20180920195336-8147d86e83ec h1:YrB6aVr9touOt75I9O1SiancmR2GMg45U9UYf0gtgWg=
 github.com/disintegration/imageorient v0.0.0-20180920195336-8147d86e83ec/go.mod h1:K0KBFIr1gWu/C1Gp10nFAcAE4hsB7JxE6OgLijrJ8Sk=
-github.com/snapas/imageorient v0.0.0-20200811211423-9f66c3153654 h1:eAIPgPvTUnaE5lbRu/5Q5Bru6SsjikAJcWMKWpUSw9o=
-github.com/snapas/imageorient v0.0.0-20200811211423-9f66c3153654/go.mod h1:IgFluAgA1qxtUbO3nY7jHDs5uv4Wn59rFUH3CosEmk8=
+github.com/snapas/imageorient v0.0.0-20210611154254-8051c9a710af h1:bt6OHwzr6TK01B9glm6TlwsYyyA7+cpHUmP3YU28eGQ=
+github.com/snapas/imageorient v0.0.0-20210611154254-8051c9a710af/go.mod h1:IgFluAgA1qxtUbO3nY7jHDs5uv4Wn59rFUH3CosEmk8=
