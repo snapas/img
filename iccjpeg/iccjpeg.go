@@ -32,6 +32,10 @@ func GetICCRaw(input io.Reader) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if seg == nil {
+		// No such segment found
+		return nil, nil
+	}
 	if seg.Size < iccHeaderLen {
 		return nil, errors.New("ICC segment invalid")
 	}
