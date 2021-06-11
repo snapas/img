@@ -8,7 +8,6 @@ package iccjpeg
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"io"
 	"io/ioutil"
@@ -26,50 +25,71 @@ const (
 	iccHeaderLen = 14
 )
 
-// getSize returns the segment length and any error.
-func getSize(input io.Reader) (int, error) {
+type (
+	Parser struct {
+		count int
+		in    *bufio.Reader
+	}
+
+	Segment struct {
+		MarkerID   byte
+		MarkerName string
+		Size       int
+		Offset     int
+		Data       []byte
+	}
+)
+
+func NewParser(input io.Reader) *Parser {
+	return &Parser{
+		in: bufio.NewReader(input),
+	}
+}
+
+// getSize returns the segment length, the number of bytes read, and any error.
+func getSize(input io.Reader) (int, int, error) {
 	var buf [2]byte
 	_, err := io.ReadFull(input, buf[0:2])
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
 	ret := int(buf[0])<<8 + int(buf[1]) - 2
 	if ret < 0 {
-		return ret, errors.New("invalid segment length")
+		return ret, 2, errors.New("invalid segment length")
 	}
 
-	return ret, nil
+	return ret, 2, nil
 }
 
-// GetICCRaw reads a JPEG from input and returns a buffer containing the raw ICC profile data.
-// If no ICC profile is present, then the buffer may be of length 0.
-func GetICCRaw(input io.Reader) ([]byte, error) {
+func (p *Parser) ReadSOI() error {
+	var buf [1024]byte
+	_, err := io.ReadFull(p.in, buf[0:2])
+	if err != nil {
+		return err
+	}
+	if buf[0] != 0xFF && buf[1] != soiMarker {
+		return errors.New("no SOI Marker")
+	}
+	return nil
+}
+
+func (p *Parser) GetSegment(marker uint8) (*Segment, error) {
 	var buf [1024]byte
 	var err error
-	in := bufio.NewReader(input)
+	var n int
 
-	_, err = io.ReadFull(in, buf[0:2])
-	if err != nil {
-		return nil, err
-	} else if buf[0] != 0xFF && buf[1] != soiMarker {
-		return nil, errors.New("no SOI Marker")
-	}
-
-	var iccData [][]byte
-	iccLength := 0
-	readProfs := 0
-	numMarkers := -1
 	for {
-		_, err = io.ReadFull(in, buf[0:2])
+		n, err = io.ReadFull(p.in, buf[0:2])
 		if err != nil {
 			return nil, err
 		}
+		p.count += n
 
 		// Handle broken jpegs
 		for buf[0] != 0xFF {
 			buf[0] = buf[1]
-			buf[1], err = in.ReadByte()
+			buf[1], err = p.in.ReadByte()
 			if err != nil {
 				return nil, err
 			}
@@ -82,7 +102,7 @@ func GetICCRaw(input io.Reader) ([]byte, error) {
 
 		// Skip stuffing
 		for buf[1] == 0xFF {
-			buf[1], err = in.ReadByte()
+			buf[1], err = p.in.ReadByte()
 			if err != nil {
 				return nil, err
 			}
@@ -90,11 +110,12 @@ func GetICCRaw(input io.Reader) ([]byte, error) {
 
 		// We reached the end of the image
 		if buf[1] == eoiMarker {
-			return nil, nil
+			var s *Segment
+			return s, nil
 		}
 
-		// Are we at an APP2 marker?
-		if buf[1] == app2Marker {
+		if buf[1] == marker {
+			// Found the marker we're looking for
 			break
 		} else {
 			// Skip RST if need be
@@ -102,76 +123,95 @@ func GetICCRaw(input io.Reader) ([]byte, error) {
 				continue
 			}
 
-			size, err := getSize(in)
+			size, n, err := getSize(p.in)
 			if err != nil {
 				return nil, err
 			}
+			p.count += n
 
-			// Skip non-APP2
-			_, err = io.CopyN(ioutil.Discard, in, int64(size))
+			// Skip sections we're not looking for
+			n64, err := io.CopyN(ioutil.Discard, p.in, int64(size))
 			if err != nil {
 				return nil, err
 			}
+			p.count += int(n64)
 		}
 	}
 
-	size, err := getSize(in)
+	seg := &Segment{
+		MarkerID:   marker,
+		MarkerName: markerNames[marker],
+		Offset:     p.count,
+	}
+	seg.Size, n, err = getSize(p.in)
 	if err != nil {
 		return nil, err
-	} else if size < iccHeaderLen {
+	}
+	p.count += n
+
+	seg.Data = make([]byte, seg.Size)
+	n, err = io.ReadFull(p.in, seg.Data)
+	p.count += n
+	return seg, nil
+}
+
+// GetICCRaw reads a JPEG from input and returns a buffer containing the raw ICC profile data.
+// If no ICC profile is present, then the buffer may be of length 0.
+func GetICCRaw(input io.Reader) ([]byte, error) {
+	var err error
+
+	/*
+		var iccData [][]byte
+		iccLength := 0
+	*/
+	readProfs := 0
+	numMarkers := -1
+	p := NewParser(input)
+	p.ReadSOI()
+	seg, err := p.GetSegment(app2Marker)
+	if err != nil {
+		return nil, err
+	}
+	if seg.Size < iccHeaderLen {
 		return nil, errors.New("ICC segment invalid")
 	}
 
-	out := new(bytes.Buffer)
-
-	_, err = io.ReadFull(io.TeeReader(in, out), buf[0:12])
-	if err != nil {
-		return nil, err
-	}
-
-	if string(buf[0:11]) != "ICC_PROFILE" || buf[11] != 0 {
+	i := 11
+	if string(seg.Data[:i]) != "ICC_PROFILE" || seg.Data[i] != 0 {
 		return nil, errors.New("ICC segment invalid")
 	}
+	i++
 
-	seqN, err := in.ReadByte()
-	if err != nil {
-		return nil, err
-	} else if seqN == 0 {
+	seqN := seg.Data[i]
+	i++
+	if seqN == 0 {
 		return nil, errors.New("invalid sequence number")
 	}
-	out.Write([]byte{seqN})
 
-	num, err := in.ReadByte()
-	if err != nil {
-		return nil, err
-	} else if numMarkers == -1 {
+	num := seg.Data[i]
+	i++
+	if numMarkers == -1 {
 		numMarkers = int(num)
-		iccData = make([][]byte, numMarkers)
+		//iccData = make([][]byte, numMarkers)
 	} else if int(num) != numMarkers {
 		return nil, errors.New("invalid ICC segment (numMarkers != cur_num_markers)")
 	}
-	out.Write([]byte{num})
 
 	if int(seqN) > numMarkers {
 		return nil, errors.New("invalid ICC segment (seqN > numMarkers)")
 	}
 
-	iccData[seqN-1] = make([]byte, size-iccHeaderLen)
-	_, err = io.ReadFull(in, iccData[seqN-1])
-	if err != nil {
-		return nil, err
-	}
+	/*
+		// Non-raw data
+		iccData[seqN-1] = make([]byte, seg.Size-iccHeaderLen)
+		copy(iccData[seqN-1], seg.Data[i:])
+		iccLength += seg.Size - iccHeaderLen
+	*/
 
-	iccLength += size - iccHeaderLen
 	readProfs++
 
 	if readProfs == numMarkers {
-		ret := make([]byte, 0, iccLength)
-		for _, data := range iccData {
-			ret = append(ret, data...)
-		}
-		out.Write(ret)
-		return out.Bytes(), nil
+		return seg.Data, nil
 	}
 
 	return nil, nil
