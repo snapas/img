@@ -22,17 +22,18 @@ func Decode(r io.Reader) (Image, string, error) {
 	i := Image{
 		buf: &bytes.Buffer{},
 	}
+	buf := &bytes.Buffer{}
 	var err error
 
 	// Parse out needed metadata we need to retain
-	tr := io.TeeReader(r, i.buf)
+	tr := io.TeeReader(r, buf)
 	i.App2, err = iccjpeg.GetICCRaw(tr)
 	if err != nil {
 		return i, "", fmt.Errorf("GetICCRaw: %s", err)
 	}
 
 	// Fix orientation
-	ri, s, err := imageorient.Decode(io.MultiReader(i.buf, r))
+	ri, s, err := imageorient.Decode(io.MultiReader(buf, r))
 	if err != nil {
 		return i, "", fmt.Errorf("imageorient.Decode: %s", err)
 	}
