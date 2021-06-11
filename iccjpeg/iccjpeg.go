@@ -12,14 +12,6 @@ import (
 )
 
 const (
-	// JPEG Markers
-	soiMarker  = 0xD8
-	eoiMarker  = 0xD9
-	app2Marker = 0xE2
-	rst0Marker = 0xD0
-	rst7Marker = 0xD7
-
-	// Others
 	iccHeaderLen = 14
 )
 
