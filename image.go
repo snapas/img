@@ -41,6 +41,10 @@ func Decode(r io.Reader) (Image, string, error) {
 	return i, s, nil
 }
 
+func (i Image) Len() int {
+	return i.buf.Len()
+}
+
 func (i Image) Bytes() []byte {
 	return i.buf.Bytes()
 }
