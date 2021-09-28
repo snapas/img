@@ -42,7 +42,10 @@ func GetICCRaw(input io.Reader) ([]byte, error) {
 
 	i := 11
 	if string(seg.Data[:i]) != "ICC_PROFILE" || seg.Data[i] != 0 {
-		return nil, errors.New("ICC segment invalid")
+		// We can't handle anything other than ICC_Profile data, so return now
+		return nil, nil
+		// TODO: support data besides ICC Profile
+		//return nil, errors.New(fmt.Sprintf("ICC segment string '%s' or seg.Data %x invalid", seg.Data[:i], seg.Data[i]))
 	}
 	i++
 
