@@ -7,15 +7,26 @@ import (
 )
 
 func TestGetICCRaw(t *testing.T) {
-	f, err := os.Open("../testdata/porto-1.jpg")
-	if err != nil {
-		log.Fatal(err)
+	tests := []struct {
+		name     string
+		filename string
+	}{
+		{"ICC profile", "porto-1.jpg"},
+		{"no ICC profile", "holden-3-noicc.jpg"},
+		{"unsure ICC profile", "gopro.jpg"},
 	}
-	defer f.Close()
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			f, err := os.Open("../testdata/" + test.filename)
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer f.Close()
 
-	icc, err := GetICCRaw(f)
-	if err != nil {
-		t.Fatal(err)
+			_, err = GetICCRaw(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
-	t.Logf("%s", icc)
 }
